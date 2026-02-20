@@ -1,6 +1,6 @@
 [project]
 name = "youtube-summarize"
-version = "0.1.0"
+dynamic = ["version"]
 description = "MCP server that fetches YouTube video transcripts and optionally summarizes them"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -29,8 +29,12 @@ Issues = "https://github.com/zlatkoc/youtube-summarize/issues"
 youtube-summarize = "main:mcp.run"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-include = ["main.py"]
+include = ["main.py", "server.json"]
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"

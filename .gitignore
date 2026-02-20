@@ -16,3 +16,6 @@ wheels/
 .idea/
 .vscode/
 *.swp
+
+# MCP registry tokens
+.mcpregistry_*_token
