@@ -99,3 +99,7 @@ uv run mcp dev main.py
 ## License
 
 MIT
+
+---
+
+mcp-name: io.github.zlatkoc/youtube-summarize
