@@ -2,6 +2,8 @@
 
 MCP server that fetches YouTube video transcripts and optionally summarizes them.
 
+![Demo — summarizing a YouTube video in Claude](assets/claude-usage-example.gif)
+
 ## Features
 
 - **Fetch transcripts** in multiple formats (text, JSON, SRT, WebVTT, pretty-print)
