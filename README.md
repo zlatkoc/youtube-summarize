@@ -43,6 +43,12 @@ List available transcript languages for a video.
 
 ## Installation
 
+### Quick start (recommended)
+
+```bash
+uvx youtube-summarize
+```
+
 ### Claude Desktop
 
 Add to your `claude_desktop_config.json`:
@@ -54,23 +60,17 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "youtube-summarize": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory", "/absolute/path/to/youtube-summarize",
-        "mcp", "run", "main.py"
-      ]
+      "command": "uvx",
+      "args": ["youtube-summarize"]
     }
   }
 }
 ```
 
-Replace `/absolute/path/to/youtube-summarize` with the actual path to this repository.
-
 ### Claude Code
 
 ```bash
-claude mcp add youtube-summarize -- uv run --directory /absolute/path/to/youtube-summarize mcp run main.py
+claude mcp add youtube-summarize -- uvx youtube-summarize
 ```
 
 ### Other MCP clients
@@ -78,7 +78,7 @@ claude mcp add youtube-summarize -- uv run --directory /absolute/path/to/youtube
 Run the server over stdio:
 
 ```bash
-uv run --directory /path/to/youtube-summarize mcp run main.py
+uvx youtube-summarize
 ```
 
 ## Prerequisites
