@@ -44,6 +44,22 @@ uv run mcp dev main.py
 - `mcp[cli]` — MCP SDK with CLI support (provides `FastMCP` and `mcp run`/`mcp dev` commands)
 - `youtube-transcript-api` — Python library for fetching YouTube transcripts (provides API client and formatters)
 
+## Releasing
+
+Releases are triggered by creating a GitHub Release (not just a tag). The workflow (`.github/workflows/publish.yml`) runs three jobs:
+
+1. **pypi** — builds and publishes the package to PyPI (version derived from the git tag via `SETUPTOOLS_SCM_PRETEND_VERSION`)
+2. **update-server-json** — updates `server.json` with the new version and commits it to `main`
+3. **mcp-registry** — publishes to the MCP Registry (runs after pypi and update-server-json)
+
+To release:
+
+```bash
+git tag v0.X.Y
+git push origin v0.X.Y
+gh release create v0.X.Y --title "v0.X.Y" --notes "Release notes here"
+```
+
 ## Python Version
 
 Python 3.13+ (managed via `.python-version` and uv)
