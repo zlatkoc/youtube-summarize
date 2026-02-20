@@ -6,12 +6,12 @@
     "url": "https://github.com/zlatkoc/youtube-summarize",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "youtube-summarize",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "transport": {
         "type": "stdio"
       }
