@@ -12,6 +12,10 @@ MCP server that fetches YouTube video transcripts and optionally summarizes them
 - **Flexible URL parsing** — accepts full YouTube URLs (`youtube.com/watch?v=`, `youtu.be/`, `youtube.com/embed/`, `youtube.com/shorts/`) or bare video IDs
 - **Multi-language support** — request transcripts in specific languages with fallback priority
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/zlatkoc-youtube-summarize).
+
 ## Tools
 
 ### `get_transcript`
