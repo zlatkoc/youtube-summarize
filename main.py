@@ -33,6 +33,9 @@ VIDEO_ID_REGEX = re.compile(
 )
 BARE_ID_REGEX = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
+PLAYLIST_LIST_PARAM_REGEX = re.compile(r"[?&]list=([A-Za-z0-9_-]+)")
+BARE_PLAYLIST_ID_REGEX = re.compile(r"^(?:PL|LL|WL|RD|OL|UU|FL)[A-Za-z0-9_-]{10,}$")
+
 
 def extract_video_id(url_or_id: str) -> str:
     """Extract a YouTube video ID from a URL or bare ID string."""
@@ -44,6 +47,19 @@ def extract_video_id(url_or_id: str) -> str:
         return match.group(1)
     raise ValueError(
         f"Could not extract a YouTube video ID from: {url_or_id}"
+    )
+
+
+def extract_playlist_id(url_or_id: str) -> str:
+    """Extract a YouTube playlist ID from a URL or bare ID string."""
+    s = url_or_id.strip()
+    if BARE_PLAYLIST_ID_REGEX.match(s):
+        return s
+    match = PLAYLIST_LIST_PARAM_REGEX.search(s)
+    if match:
+        return match.group(1)
+    raise ValueError(
+        f"Could not extract a YouTube playlist ID from: {url_or_id}"
     )
 
 
@@ -156,6 +172,55 @@ def _format_hms(seconds: float | int) -> str:
     h, rem = divmod(total, 3600)
     m, s = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _fetch_playlist(playlist_id: str, limit: int | None = None) -> dict | None:
+    """Fast-mode playlist fetch via yt-dlp.
+
+    Uses extract_flat="in_playlist" so each entry is enumerated without a per-video
+    network round-trip. Returns None on any failure.
+    """
+    try:
+        from yt_dlp import YoutubeDL
+
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": "in_playlist",
+            "logger": _SilentLogger(),
+        }
+        if limit:
+            opts["playlistend"] = limit
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(
+                f"https://www.youtube.com/playlist?list={playlist_id}",
+                download=False,
+            )
+        if not info:
+            return None
+        entries = []
+        for e in info.get("entries") or []:
+            if e is None:
+                continue
+            vid = e.get("id")
+            entries.append({
+                "id": vid,
+                "title": e.get("title"),
+                "channel": e.get("channel") or e.get("uploader"),
+                "channel_url": e.get("channel_url") or e.get("uploader_url"),
+                "duration_seconds": e.get("duration"),
+                "view_count": e.get("view_count"),
+                "url": e.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else None),
+            })
+        return {
+            "title": info.get("title"),
+            "uploader": info.get("uploader") or info.get("channel"),
+            "total": info.get("playlist_count") or len(entries),
+            "entries": entries,
+        }
+    except Exception:
+        return None
 
 
 def _format_upload_date(yyyymmdd: str | None) -> str | None:
@@ -354,6 +419,106 @@ def get_video_metadata(url: str) -> str:
     if meta.get("description"):
         lines.extend(["", "Description:", meta["description"]])
     return "\n".join(lines)
+
+
+_PLAYLIST_SORT_KEYS = {
+    "index": None,                      # natural playlist order, no sort key
+    "title": "title",
+    "duration": "duration_seconds",
+    "views": "view_count",
+}
+
+
+@mcp.tool()
+def list_playlist_videos(
+    url: str,
+    limit: int = 500,
+    sort_by: str = "index",
+    order: str = "asc",
+) -> str:
+    """List the videos in a YouTube playlist (titles, IDs, channels, durations, views).
+
+    Per-video metadata is intentionally lean so the call stays fast even for big playlists.
+    For full metadata on a specific video, call get_video_metadata with that video's ID.
+
+    Args:
+        url: YouTube playlist URL (with ?list=...) or bare playlist ID
+        limit: Maximum videos to return (default 500). Pass a smaller value to truncate.
+        sort_by: Sort key — "index" (playlist order, default), "title", "duration", "views". "upload_date" is not supported in this fast-mode tool.
+        order: "asc" (default) or "desc".
+    """
+    if sort_by not in _PLAYLIST_SORT_KEYS:
+        if sort_by == "upload_date":
+            return (
+                'Error: sort_by="upload_date" is not supported by list_playlist_videos '
+                "(it would require a slow per-video fetch). Call get_video_metadata for "
+                "individual videos if you need upload dates."
+            )
+        return f"Error: invalid sort_by '{sort_by}'. Choose from: {', '.join(_PLAYLIST_SORT_KEYS)}."
+    if order not in ("asc", "desc"):
+        return f"Error: invalid order '{order}'. Choose 'asc' or 'desc'."
+    if limit <= 0:
+        return f"Error: limit must be a positive integer (got {limit})."
+
+    try:
+        playlist_id = extract_playlist_id(url)
+    except ValueError as e:
+        return f"Error: {e}"
+
+    # When sorting by index, push the limit into yt-dlp's playlistend for an efficient
+    # fetch. Other sorts need every entry first.
+    fetch_limit = limit if sort_by == "index" else None
+    playlist = _fetch_playlist(playlist_id, limit=fetch_limit)
+    if playlist is None:
+        return f"Error: Failed to fetch playlist '{playlist_id}'."
+
+    entries = playlist["entries"]
+
+    sort_key = _PLAYLIST_SORT_KEYS[sort_by]
+    if sort_key is not None:
+        reverse = order == "desc"
+        # Entries with missing sort values go to the end regardless of direction.
+        def keyfunc(e):
+            v = e.get(sort_key)
+            missing = v is None
+            if isinstance(v, str):
+                v = v.lower()
+            return (missing, v if not missing else "")
+        entries = sorted(entries, key=keyfunc, reverse=reverse)
+        # `reverse=True` would also reverse the missing-flag, so re-pin missing entries to the tail
+        if reverse:
+            present = [e for e in entries if e.get(sort_key) is not None]
+            absent = [e for e in entries if e.get(sort_key) is None]
+            entries = present + absent
+
+    shown = entries[:limit]
+    total = playlist["total"]
+
+    lines = []
+    if playlist.get("title"):
+        lines.append(f"Playlist: {playlist['title']}")
+    if playlist.get("uploader"):
+        lines.append(f"Owner: {playlist['uploader']}")
+    truncated = total and len(shown) < total
+    count_line = f"Showing {len(shown)} of {total} videos" if truncated else f"Videos: {len(shown)}"
+    lines.append(f"{count_line} (sorted by {sort_by}, {order})")
+    lines.append("")
+
+    for i, e in enumerate(shown, start=1):
+        lines.append(f"  {i:>3}. {e.get('title') or '(no title)'}")
+        if e.get("id"):
+            lines.append(f"       ID: {e['id']}")
+        if e.get("channel"):
+            lines.append(f"       Channel: {e['channel']}")
+        if e.get("duration_seconds") is not None:
+            lines.append(f"       Duration: {_format_hms(e['duration_seconds'])}")
+        if e.get("view_count") is not None:
+            lines.append(f"       Views: {e['view_count']:,}")
+        if e.get("url"):
+            lines.append(f"       URL: {e['url']}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 @mcp.tool()
