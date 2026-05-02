@@ -10,6 +10,7 @@ MCP server that fetches YouTube video transcripts and optionally summarizes them
 - **Video metadata** — title, description, channel, upload date, duration, views, chapters (via yt-dlp)
 - **Optional timestamps** in plain-text transcripts
 - **Summarize videos** — returns transcript with the prompt clearly broken out for human review before the LLM acts on it
+- **List playlist videos** — fast enumeration of any public playlist with optional sorting
 - **List available languages** for any video's transcripts
 - **Flexible URL parsing** — accepts full YouTube URLs (`youtube.com/watch?v=`, `youtu.be/`, `youtube.com/embed/`, `youtube.com/shorts/`) or bare video IDs
 - **Multi-language support** — request transcripts in specific languages with fallback priority
@@ -48,6 +49,17 @@ Fetch metadata (title, description, channel, upload date, duration, views, tags,
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `url` | string | *required* | YouTube video URL or video ID |
+
+### `list_playlist_videos`
+
+List the videos in a YouTube playlist (title, ID, channel, duration, views, URL). Per-video metadata is intentionally lean so the call stays fast even for large playlists; call `get_video_metadata` with a specific video ID for full detail.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | string | *required* | YouTube playlist URL (with `?list=...`) or bare playlist ID |
+| `limit` | integer | `500` | Maximum videos to return |
+| `sort_by` | string | `"index"` | One of: `index` (playlist order), `title`, `duration`, `views`. `upload_date` is not supported. |
+| `order` | string | `"asc"` | `asc` or `desc` |
 
 ### `list_transcripts`
 
