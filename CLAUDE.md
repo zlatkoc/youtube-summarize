@@ -21,7 +21,7 @@ uv run mcp dev main.py
 
 ## Architecture
 
-- **Entry point**: `main.py` — defines the FastMCP server instance and all MCP tools
+- **Entry point**: `main.py` — defines the MCPServer instance and all MCP tools
 - **Transport**: stdio-based MCP server (launched via `mcp run`)
 - **Library**: `youtube_transcript_api` — used directly as a Python library (not as a subprocess/CLI)
 
@@ -41,7 +41,7 @@ uv run mcp dev main.py
 
 ## Dependencies
 
-- `mcp[cli]` — MCP SDK with CLI support (provides `FastMCP` and `mcp run`/`mcp dev` commands)
+- `mcp[cli]` — MCP SDK 2.x with CLI support (provides `MCPServer` and `mcp run`/`mcp dev` commands)
 - `youtube-transcript-api` — Python library for fetching YouTube transcripts (provides API client and formatters)
 
 ## Releasing

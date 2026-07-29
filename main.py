@@ -1,6 +1,6 @@
 import re
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import (
     JSONFormatter,
@@ -10,7 +10,7 @@ from youtube_transcript_api.formatters import (
     WebVTTFormatter,
 )
 
-mcp = FastMCP("youtube-summary")
+mcp = MCPServer("youtube-summary")
 
 api = YouTubeTranscriptApi()
 
