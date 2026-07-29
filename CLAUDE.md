@@ -45,6 +45,19 @@ uv run mcp dev main.py
 - `mcp[cli]` — MCP SDK 2.x with CLI support (provides `MCPServer` and `mcp run`/`mcp dev` commands)
 - `youtube-transcript-api` — Python library for fetching YouTube transcripts (provides API client and formatters)
 
+## Making Changes
+
+All changes go through a pull request — never commit directly to `main`, even for small fixes or documentation:
+
+```bash
+git checkout -b my-change
+# ... commit work ...
+git push -u origin my-change
+gh pr create
+```
+
+Merge happens after review. Releases (below) are cut only from merged `main`.
+
 ## Releasing
 
 Releases are triggered by creating a GitHub Release (not just a tag). The workflow (`.github/workflows/publish.yml`) runs three jobs:
