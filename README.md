@@ -11,6 +11,7 @@ MCP server that fetches YouTube video transcripts and optionally summarizes them
 - **Optional timestamps** in plain-text transcripts
 - **Summarize videos** — returns transcript with the prompt clearly broken out for human review before the LLM acts on it
 - **List playlist videos** — fast enumeration of any public playlist with optional sorting
+- **Search videos** — clean ranked results with sort and filter options, without the ads, Shorts shelves, and personalized recommendations of the YouTube website
 - **List available languages** for any video's transcripts
 - **Flexible URL parsing** — accepts full YouTube URLs (`youtube.com/watch?v=`, `youtu.be/`, `youtube.com/embed/`, `youtube.com/shorts/`) or bare video IDs
 - **Multi-language support** — request transcripts in specific languages with fallback priority
@@ -60,6 +61,18 @@ List the videos in a YouTube playlist (title, ID, channel, duration, views, URL)
 | `limit` | integer | `500` | Maximum videos to return |
 | `sort_by` | string | `"index"` | One of: `index` (playlist order), `title`, `duration`, `views`. `upload_date` is not supported. |
 | `order` | string | `"asc"` | `asc` or `desc` |
+
+### `search_videos`
+
+Search YouTube for videos and return a clean ranked list (title, ID, channel, duration, views, URL) — only actual videos, with no ads, recommendation shelves, or personalization. Relevance ordering still comes from YouTube's backend. Pair with `get_transcript` or `summarize_transcript` on a result's ID or URL.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | *required* | Search terms |
+| `limit` | integer | `10` | Maximum results to return |
+| `sort_by` | string | `"relevance"` | One of: `relevance`, `date` (newest first), `views`, `rating` |
+| `uploaded` | string | `"any"` | Filter by upload time: `any`, `hour`, `today`, `week`, `month`, `year` |
+| `duration` | string | `"any"` | Filter by length: `any`, `short` (<4 min), `medium` (4–20 min), `long` (>20 min) |
 
 ### `list_transcripts`
 

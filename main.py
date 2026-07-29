@@ -1,4 +1,6 @@
+import base64
 import re
+from urllib.parse import urlencode
 
 from mcp.server import MCPServer
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -505,6 +507,139 @@ def list_playlist_videos(
     lines.append("")
 
     for i, e in enumerate(shown, start=1):
+        lines.append(f"  {i:>3}. {e.get('title') or '(no title)'}")
+        if e.get("id"):
+            lines.append(f"       ID: {e['id']}")
+        if e.get("channel"):
+            lines.append(f"       Channel: {e['channel']}")
+        if e.get("duration_seconds") is not None:
+            lines.append(f"       Duration: {_format_hms(e['duration_seconds'])}")
+        if e.get("view_count") is not None:
+            lines.append(f"       Views: {e['view_count']:,}")
+        if e.get("url"):
+            lines.append(f"       URL: {e['url']}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# Values for YouTube's `sp` search-filter protobuf (see _build_search_filter_params).
+_SEARCH_SORT_VALUES = {"relevance": 0, "rating": 1, "date": 2, "views": 3}
+_SEARCH_UPLOADED_VALUES = {"any": 0, "hour": 1, "today": 2, "week": 3, "month": 4, "year": 5}
+_SEARCH_DURATION_VALUES = {"any": 0, "short": 1, "long": 2, "medium": 3}
+
+
+def _build_search_filter_params(sort: int, uploaded: int, duration: int) -> str:
+    """Encode YouTube's `sp` search parameter (a small protobuf, built by hand).
+
+    Field 1 is the sort order; field 2 is a filters submessage (field 1: upload
+    date, field 2: result type, field 3: duration). Result type is always set
+    to video so channels and playlists never appear in results.
+    """
+    filters = b""
+    if uploaded:
+        filters += bytes([0x08, uploaded])
+    filters += bytes([0x10, 0x01])  # result type: video
+    if duration:
+        filters += bytes([0x18, duration])
+    payload = bytes([0x08, sort]) if sort else b""
+    payload += bytes([0x12, len(filters)]) + filters
+    return base64.urlsafe_b64encode(payload).decode()
+
+
+def _search_videos(query: str, limit: int, sp: str) -> list[dict] | None:
+    """Fetch YouTube search results via yt-dlp's search-results extractor.
+
+    Uses extract_flat so each result is enumerated without a per-video network
+    round-trip. Returns None on any failure.
+    """
+    try:
+        from yt_dlp import YoutubeDL
+
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": "in_playlist",
+            "playlistend": limit,
+            "logger": _SilentLogger(),
+        }
+        url = "https://www.youtube.com/results?" + urlencode(
+            {"search_query": query, "sp": sp}
+        )
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        if not info:
+            return None
+        results = []
+        for e in info.get("entries") or []:
+            if e is None:
+                continue
+            vid = e.get("id")
+            results.append({
+                "id": vid,
+                "title": e.get("title"),
+                "channel": e.get("channel") or e.get("uploader"),
+                "channel_url": e.get("channel_url") or e.get("uploader_url"),
+                "duration_seconds": e.get("duration"),
+                "view_count": e.get("view_count"),
+                "url": e.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else None),
+            })
+        return results
+    except Exception:
+        return None
+
+
+@mcp.tool()
+def search_videos(
+    query: str,
+    limit: int = 10,
+    sort_by: str = "relevance",
+    uploaded: str = "any",
+    duration: str = "any",
+) -> str:
+    """Search YouTube for videos and return a clean ranked result list.
+
+    Unlike the YouTube website, results contain only actual videos — no ads,
+    recommendation shelves, or personalization. Relevance ordering still comes
+    from YouTube's backend. Pair with get_transcript or summarize_transcript
+    on a result's ID or URL.
+
+    Args:
+        query: Search terms
+        limit: Maximum results to return (default 10)
+        sort_by: Result order — "relevance" (default), "date" (newest first), "views", "rating"
+        uploaded: Filter by upload time — "any" (default), "hour", "today", "week", "month", "year"
+        duration: Filter by length — "any" (default), "short" (<4 min), "medium" (4-20 min), "long" (>20 min)
+    """
+    if not query.strip():
+        return "Error: query must not be empty."
+    if limit <= 0:
+        return f"Error: limit must be a positive integer (got {limit})."
+    if sort_by not in _SEARCH_SORT_VALUES:
+        return f"Error: invalid sort_by '{sort_by}'. Choose from: {', '.join(_SEARCH_SORT_VALUES)}."
+    if uploaded not in _SEARCH_UPLOADED_VALUES:
+        return f"Error: invalid uploaded '{uploaded}'. Choose from: {', '.join(_SEARCH_UPLOADED_VALUES)}."
+    if duration not in _SEARCH_DURATION_VALUES:
+        return f"Error: invalid duration '{duration}'. Choose from: {', '.join(_SEARCH_DURATION_VALUES)}."
+
+    sp = _build_search_filter_params(
+        _SEARCH_SORT_VALUES[sort_by],
+        _SEARCH_UPLOADED_VALUES[uploaded],
+        _SEARCH_DURATION_VALUES[duration],
+    )
+    results = _search_videos(query.strip(), limit, sp)
+    if results is None:
+        return f"Error: Failed to fetch search results for '{query}'."
+    if not results:
+        return f"No results found for '{query}' (uploaded: {uploaded}, duration: {duration})."
+
+    lines = [
+        f'Search results for "{query}" '
+        f"(sorted by {sort_by}, uploaded: {uploaded}, duration: {duration})",
+        "",
+    ]
+    for i, e in enumerate(results, start=1):
         lines.append(f"  {i:>3}. {e.get('title') or '(no title)'}")
         if e.get("id"):
             lines.append(f"       ID: {e['id']}")

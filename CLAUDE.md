@@ -30,6 +30,7 @@ uv run mcp dev main.py
 1. **`get_transcript`** — fetch a YouTube video's transcript in a specified format (json, pretty, text, webvtt, srt), with optional language selection
 2. **`list_transcripts`** — list available transcript languages for a video
 3. **`summarize_transcript`** — fetch transcript and return it with summarization instructions for the LLM client to act on
+4. **`search_videos`** — search YouTube via yt-dlp (no ads/recommendations/personalization), with sort (relevance/date/views/rating) and upload-date/duration filters encoded as YouTube's `sp` protobuf parameter
 
 ### Design Decisions
 
