@@ -14,8 +14,6 @@ from youtube_transcript_api.formatters import (
 
 mcp = MCPServer("youtube-summary")
 
-api = YouTubeTranscriptApi()
-
 FORMATTERS = {
     "json": JSONFormatter(),
     "pretty": PrettyPrintFormatter(),
@@ -74,6 +72,13 @@ def _sanitize_untrusted(text: str) -> str:
     """Escape section-header-like lines in untrusted text (transcripts, video
     metadata) so they cannot spoof the labeled sections of a tool's output."""
     return SECTION_LABEL_REGEX.sub(r"\1\\[", text)
+
+
+def _transcript_api() -> YouTubeTranscriptApi:
+    """Build a fresh client per call: MCP runs sync tools in a thread pool, and
+    the client's underlying requests.Session is not thread-safe, so a shared
+    instance would be raced by concurrent tool calls."""
+    return YouTubeTranscriptApi()
 
 
 def _format_transcript(transcript, fmt: str) -> str:
@@ -296,7 +301,7 @@ def get_transcript(
 
     langs = languages or ["en"]
     try:
-        transcript = api.fetch(
+        transcript = _transcript_api().fetch(
             video_id,
             languages=langs,
             preserve_formatting=preserve_formatting,
@@ -343,7 +348,7 @@ def summarize_transcript(
 
     langs = languages or ["en"]
     try:
-        transcript = api.fetch(video_id, languages=langs)
+        transcript = _transcript_api().fetch(video_id, languages=langs)
         if include_timestamps:
             text = _format_transcript_with_timestamps(transcript)
         else:
@@ -683,7 +688,7 @@ def list_transcripts(url: str) -> str:
         return f"Error: {e}"
 
     try:
-        transcript_list = api.list(video_id)
+        transcript_list = _transcript_api().list(video_id)
         lines = [f"Available transcripts for video '{video_id}':\n"]
         for t in transcript_list:
             kind = "auto-generated" if t.is_generated else "manual"
