@@ -144,8 +144,15 @@ class _SilentLogger:
     def error(self, _msg): pass
 
 
-def _fetch_metadata(video_id: str) -> dict | None:
-    """Fetch video metadata via yt-dlp. Returns None on any failure."""
+def _ytdlp_error_message(e: Exception) -> str:
+    """Reduce a yt-dlp exception to its message, without the 'ERROR: ' prefix."""
+    msg = str(e).strip()
+    return msg.removeprefix("ERROR: ") or e.__class__.__name__
+
+
+def _fetch_metadata(video_id: str) -> tuple[dict | None, str | None]:
+    """Fetch video metadata via yt-dlp. Returns (metadata, error_message);
+    exactly one of the two is None."""
     try:
         from yt_dlp import YoutubeDL
 
@@ -161,7 +168,7 @@ def _fetch_metadata(video_id: str) -> dict | None:
                 download=False,
             )
         if not info:
-            return None
+            return None, "yt-dlp returned no data"
         return {
             "title": info.get("title"),
             "description": info.get("description"),
@@ -179,9 +186,9 @@ def _fetch_metadata(video_id: str) -> dict | None:
             "age_limit": info.get("age_limit"),
             "is_live": info.get("is_live"),
             "webpage_url": info.get("webpage_url"),
-        }
-    except Exception:
-        return None
+        }, None
+    except Exception as e:
+        return None, _ytdlp_error_message(e)
 
 
 def _format_hms(seconds: float | int) -> str:
@@ -192,11 +199,11 @@ def _format_hms(seconds: float | int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def _fetch_playlist(playlist_id: str, limit: int | None = None) -> dict | None:
+def _fetch_playlist(playlist_id: str, limit: int | None = None) -> tuple[dict | None, str | None]:
     """Fast-mode playlist fetch via yt-dlp.
 
     Uses extract_flat="in_playlist" so each entry is enumerated without a per-video
-    network round-trip. Returns None on any failure.
+    network round-trip. Returns (playlist, error_message); exactly one is None.
     """
     try:
         from yt_dlp import YoutubeDL
@@ -216,7 +223,7 @@ def _fetch_playlist(playlist_id: str, limit: int | None = None) -> dict | None:
                 download=False,
             )
         if not info:
-            return None
+            return None, "yt-dlp returned no data"
         entries = []
         for e in info.get("entries") or []:
             if e is None:
@@ -236,9 +243,9 @@ def _fetch_playlist(playlist_id: str, limit: int | None = None) -> dict | None:
             "uploader": info.get("uploader") or info.get("channel"),
             "total": info.get("playlist_count") or len(entries),
             "entries": entries,
-        }
-    except Exception:
-        return None
+        }, None
+    except Exception as e:
+        return None, _ytdlp_error_message(e)
 
 
 def _format_upload_date(yyyymmdd: str | None) -> str | None:
@@ -247,9 +254,13 @@ def _format_upload_date(yyyymmdd: str | None) -> str | None:
     return f"{yyyymmdd[0:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"
 
 
-def _format_metadata_block(meta: dict | None, header: str = "METADATA") -> str:
+def _format_metadata_block(
+    meta: dict | None, header: str = "METADATA", error: str | None = None
+) -> str:
     """Render a [METADATA] block, or [METADATA_ERROR] when meta is None."""
     if meta is None:
+        if error:
+            return f"[METADATA_ERROR]\nFailed to fetch video metadata: {_sanitize_untrusted(error)}"
         return "[METADATA_ERROR]\nFailed to fetch video metadata."
     lines = [f"[{header}]"]
     if meta.get("title"):
@@ -316,8 +327,8 @@ def get_transcript(
     if not include_metadata:
         return body
 
-    meta = _fetch_metadata(video_id)
-    return f"{_format_metadata_block(meta)}\n\n[TRANSCRIPT]\n{_sanitize_untrusted(body)}"
+    meta, meta_error = _fetch_metadata(video_id)
+    return f"{_format_metadata_block(meta, error=meta_error)}\n\n[TRANSCRIPT]\n{_sanitize_untrusted(body)}"
 
 
 @mcp.tool()
@@ -368,8 +379,8 @@ def summarize_transcript(
     ]
 
     if include_metadata:
-        meta = _fetch_metadata(video_id)
-        sections.append(_format_metadata_block(meta, header="VIDEO"))
+        meta, meta_error = _fetch_metadata(video_id)
+        sections.append(_format_metadata_block(meta, header="VIDEO", error=meta_error))
 
     sections.append(
         f"[METADATA]\n"
@@ -394,9 +405,9 @@ def get_video_metadata(url: str) -> str:
     except ValueError as e:
         return f"Error: {e}"
 
-    meta = _fetch_metadata(video_id)
+    meta, error = _fetch_metadata(video_id)
     if meta is None:
-        return f"Error: Failed to fetch metadata for video '{video_id}'."
+        return f"Error: Failed to fetch metadata for video '{video_id}': {error}"
 
     lines = [f"Metadata for video '{video_id}':", ""]
     if meta.get("title"):
@@ -434,8 +445,11 @@ def get_video_metadata(url: str) -> str:
         for ch in meta["chapters"]:
             start = ch.get("start_time") or 0
             lines.append(f"  {_format_hms(start)} {ch.get('title', '')}")
-    if meta.get("description"):
-        lines.extend(["", "Description:", meta["description"]])
+    desc = (meta.get("description") or "").strip()
+    if desc:
+        if len(desc) > 2000:
+            desc = desc[:2000].rstrip() + "… (truncated)"
+        lines.extend(["", "Description:", desc])
     return "\n".join(lines)
 
 
@@ -486,9 +500,9 @@ def list_playlist_videos(
     # When sorting by index ascending, push the limit into yt-dlp's playlistend for an
     # efficient fetch. Descending index and other sorts need every entry first.
     fetch_limit = limit if sort_by == "index" and order == "asc" else None
-    playlist = _fetch_playlist(playlist_id, limit=fetch_limit)
+    playlist, error = _fetch_playlist(playlist_id, limit=fetch_limit)
     if playlist is None:
-        return f"Error: Failed to fetch playlist '{playlist_id}'."
+        return f"Error: Failed to fetch playlist '{playlist_id}': {error}"
 
     entries = playlist["entries"]
 
@@ -566,11 +580,11 @@ def _build_search_filter_params(sort: int, uploaded: int, duration: int) -> str:
     return base64.urlsafe_b64encode(payload).decode()
 
 
-def _search_videos(query: str, limit: int, sp: str) -> list[dict] | None:
+def _search_videos(query: str, limit: int, sp: str) -> tuple[list[dict] | None, str | None]:
     """Fetch YouTube search results via yt-dlp's search-results extractor.
 
     Uses extract_flat so each result is enumerated without a per-video network
-    round-trip. Returns None on any failure.
+    round-trip. Returns (results, error_message); exactly one is None.
     """
     try:
         from yt_dlp import YoutubeDL
@@ -589,7 +603,7 @@ def _search_videos(query: str, limit: int, sp: str) -> list[dict] | None:
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         if not info:
-            return None
+            return None, "yt-dlp returned no data"
         results = []
         for e in info.get("entries") or []:
             if e is None:
@@ -604,9 +618,9 @@ def _search_videos(query: str, limit: int, sp: str) -> list[dict] | None:
                 "view_count": e.get("view_count"),
                 "url": e.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else None),
             })
-        return results
-    except Exception:
-        return None
+        return results, None
+    except Exception as e:
+        return None, _ytdlp_error_message(e)
 
 
 @mcp.tool()
@@ -647,9 +661,9 @@ def search_videos(
         _SEARCH_UPLOADED_VALUES[uploaded],
         _SEARCH_DURATION_VALUES[duration],
     )
-    results = _search_videos(query.strip(), limit, sp)
+    results, error = _search_videos(query.strip(), limit, sp)
     if results is None:
-        return f"Error: Failed to fetch search results for '{query}'."
+        return f"Error: Failed to fetch search results for '{query}': {error}"
     if not results:
         return f"No results found for '{query}' (uploaded: {uploaded}, duration: {duration})."
 

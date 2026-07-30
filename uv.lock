@@ -827,7 +827,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = ">=2,<3" },
-    { name = "youtube-transcript-api", specifier = ">=1.0.0" },
+    { name = "youtube-transcript-api", specifier = ">=1.0.0,<2" },
     { name = "yt-dlp", specifier = ">=2025.1.1" },
 ]
 
