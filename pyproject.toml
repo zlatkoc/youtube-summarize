@@ -21,6 +21,11 @@ dependencies = [
     "yt-dlp>=2025.1.1",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
 [project.urls]
 Homepage = "https://github.com/zlatkoc/youtube-summarize"
 Repository = "https://github.com/zlatkoc/youtube-summarize"

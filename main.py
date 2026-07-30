@@ -30,10 +30,15 @@ DEFAULT_SUMMARY_PROMPT = (
 )
 
 VIDEO_ID_REGEX = re.compile(
-    r"(?:youtube\.com/watch\?.*v=|youtu\.be/|youtube\.com/embed/|youtube\.com/shorts/)"
+    r"(?:youtube\.com/watch\?.*v=|youtu\.be/|youtube(?:-nocookie)?\.com/embed/"
+    r"|youtube\.com/shorts/|youtube\.com/live/)"
     r"([A-Za-z0-9_-]{11})"
 )
 BARE_ID_REGEX = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+# Matches an opening bracket at line start that would read as a section header
+# like [INSTRUCTIONS] or [TRANSCRIPT]. Timestamp prefixes ([00:12:34]) don't match.
+SECTION_LABEL_REGEX = re.compile(r"^(\s*)\[(?=[A-Z_]+\])", re.MULTILINE)
 
 PLAYLIST_LIST_PARAM_REGEX = re.compile(r"[?&]list=([A-Za-z0-9_-]+)")
 BARE_PLAYLIST_ID_REGEX = re.compile(r"^(?:PL|LL|WL|RD|OL|UU|FL)[A-Za-z0-9_-]{10,}$")
@@ -63,6 +68,12 @@ def extract_playlist_id(url_or_id: str) -> str:
     raise ValueError(
         f"Could not extract a YouTube playlist ID from: {url_or_id}"
     )
+
+
+def _sanitize_untrusted(text: str) -> str:
+    """Escape section-header-like lines in untrusted text (transcripts, video
+    metadata) so they cannot spoof the labeled sections of a tool's output."""
+    return SECTION_LABEL_REGEX.sub(r"\1\\[", text)
 
 
 def _format_transcript(transcript, fmt: str) -> str:
@@ -237,9 +248,9 @@ def _format_metadata_block(meta: dict | None, header: str = "METADATA") -> str:
         return "[METADATA_ERROR]\nFailed to fetch video metadata."
     lines = [f"[{header}]"]
     if meta.get("title"):
-        lines.append(f"Title: {meta['title']}")
+        lines.append(f"Title: {_sanitize_untrusted(meta['title'])}")
     if meta.get("channel"):
-        lines.append(f"Channel: {meta['channel']}")
+        lines.append(f"Channel: {_sanitize_untrusted(meta['channel'])}")
     pub = _format_upload_date(meta.get("upload_date"))
     if pub:
         lines.append(f"Published: {pub}")
@@ -255,7 +266,7 @@ def _format_metadata_block(meta: dict | None, header: str = "METADATA") -> str:
     if desc:
         if len(desc) > 500:
             desc = desc[:500].rstrip() + "…"
-        lines.append(f"Description: {desc}")
+        lines.append(f"Description: {_sanitize_untrusted(desc)}")
     return "\n".join(lines)
 
 
@@ -301,7 +312,7 @@ def get_transcript(
         return body
 
     meta = _fetch_metadata(video_id)
-    return f"{_format_metadata_block(meta)}\n\n[TRANSCRIPT]\n{body}"
+    return f"{_format_metadata_block(meta)}\n\n[TRANSCRIPT]\n{_sanitize_untrusted(body)}"
 
 
 @mcp.tool()
@@ -361,7 +372,7 @@ def summarize_transcript(
         f"Language: {language} ({language_code})\n"
         f"Type: {'auto-generated' if is_generated else 'manual'}"
     )
-    sections.append(f"[TRANSCRIPT]\n{text}")
+    sections.append(f"[TRANSCRIPT]\n{_sanitize_untrusted(text)}")
 
     return "\n\n".join(sections)
 
@@ -467,9 +478,9 @@ def list_playlist_videos(
     except ValueError as e:
         return f"Error: {e}"
 
-    # When sorting by index, push the limit into yt-dlp's playlistend for an efficient
-    # fetch. Other sorts need every entry first.
-    fetch_limit = limit if sort_by == "index" else None
+    # When sorting by index ascending, push the limit into yt-dlp's playlistend for an
+    # efficient fetch. Descending index and other sorts need every entry first.
+    fetch_limit = limit if sort_by == "index" and order == "asc" else None
     playlist = _fetch_playlist(playlist_id, limit=fetch_limit)
     if playlist is None:
         return f"Error: Failed to fetch playlist '{playlist_id}'."
@@ -477,7 +488,10 @@ def list_playlist_videos(
     entries = playlist["entries"]
 
     sort_key = _PLAYLIST_SORT_KEYS[sort_by]
-    if sort_key is not None:
+    if sort_key is None:
+        if order == "desc":
+            entries = list(reversed(entries))
+    else:
         reverse = order == "desc"
         # Entries with missing sort values go to the end regardless of direction.
         def keyfunc(e):
