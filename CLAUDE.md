@@ -31,6 +31,8 @@ uv run mcp dev main.py
 2. **`list_transcripts`** — list available transcript languages for a video
 3. **`summarize_transcript`** — fetch transcript and return it with summarization instructions for the LLM client to act on
 4. **`search_videos`** — search YouTube via yt-dlp (no ads/recommendations/personalization), with sort (relevance/date/views/rating) and upload-date/duration filters encoded as YouTube's `sp` protobuf parameter
+5. **`get_video_metadata`** — fetch full metadata (title, description, channel, upload date, duration, views, chapters, tags, etc.) for a video via yt-dlp
+6. **`list_playlist_videos`** — list a playlist's videos (titles, IDs, channels, durations, views) via yt-dlp's flat extraction, with sorting and a limit
 
 ### Design Decisions
 
@@ -44,6 +46,7 @@ uv run mcp dev main.py
 
 - `mcp[cli]` — MCP SDK 2.x with CLI support (provides `MCPServer` and `mcp run`/`mcp dev` commands)
 - `youtube-transcript-api` — Python library for fetching YouTube transcripts (provides API client and formatters)
+- `yt-dlp` — backs the metadata, playlist, and search tools
 
 ## Making Changes
 
